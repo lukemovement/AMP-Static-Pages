@@ -5,13 +5,34 @@
 
  */
 
-add_action('admin_menu', 'amp_plugin_create_menu');
+add_action('admin_menu', 'amp_static_pages_create_menu');
 
-function amp_plugin_create_menu() {
-    add_menu_page('AMP Static Pages', 'AMP Static', 'administrator', __FILE__, 'amp_plugin_settings_page', plugins_url('/images/icon.png', __FILE__));
+function amp_static_pages_create_menu() {
+    add_menu_page('AMP Static Pages', 'AMP Static', 'administrator', __FILE__, 'amp_static_pages_settings_page', plugins_url('/images/icon.png', __FILE__));
 }
 
-function amp_plugin_settings_page() {
+function amp_static_pages_settings_page() {
+    if(get_option( 'permalink_structure' ) == "") {
+        ?>
+<div class="wrap">
+    <h1>AMP Static Pages</h1>
+    <p>
+        AMP Static Pages works by taking a snapshot of your existing AMP web page and saving it as a HTML 
+        file on your server. Because AMP Static Pages creates the folder structure necessary to serve 
+        up the HTML file without the need of WordPress, it means that you will need to change your permalink 
+        settings so that it is not just parameter dependent.
+    </p>
+    <p>
+        Click <a href='<?php echo get_site_url(); ?>/wp-admin/options-permalink.php' title='PermaLink Settings'>here</a> to go to your permalink settings now
+    </p>
+</div>
+        <?php
+    } else {
+        amp_static_pages_load_settings_page();
+    }
+}
+
+function amp_static_pages_load_settings_page() {
     ?>
     <div class="wrap">
         <h1>AMP Static Pages</h1>
@@ -22,12 +43,15 @@ function amp_plugin_settings_page() {
             </div>
             <div class="log-text">
                 <p class="button-primary clear-log" onclick="clear_log()">Clear</p>
+                <table>
+                    
+                </table>
             </div>
         </div>
         <div class="controls">
             <select class="selected-tab" onchange="openPostType(jQuery(this).val());">
                 <?php foreach (get_post_types() as $PostType) { 
-                    if(empty(get_posts(array('numberposts' => '-1', 'post_type' => $PostType)))) {continue;} ?>
+                    if(empty(get_posts(array('numberposts' => '-1', 'post_type' => $PostType))) || !is_post_type_viewable($PostType)) {continue;} ?>
                     <option value="<?php echo $PostType; ?>"><?php echo $PostType; ?></option>
                 <?php } ?>
             </select>
@@ -160,8 +184,14 @@ function amp_static_scripts() {
             padding: 40px 10px;
             overflow:scroll;
         }
+        .log-text table {
+            margin-top:40px;
+        }
+        .log-text table td {
+            border-top:2px solid rgba(0,0,0,0.7);
+        }
         .clear-log {
-            
+            position:fixed;
         }
     </style>
     <script type="text/javascript" >
@@ -178,16 +208,20 @@ function amp_static_scripts() {
         }
         
         function clear_log() {
-            jQuery('.log-text p').each(function(i,e) {
-                if(!jQuery(e).hasClass('clear-log')) {
+            jQuery('.log-text tr').each(function(i,e) {
                     jQuery(e).remove();
-                }
             });
         }
         function reload_sections(tab_id) {
             jQuery('#' + tab_id + ' .get_response_code').each(function(i,e) {
                 set_url_response(e);
             });
+        }
+        
+        function amp_static_pages_log(text) { 
+            today = new Date();
+            time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+            jQuery('.log-text table').append("<tr><td>" + time + "</td><td>" + text + "</td></tr>");
         }
         
         function set_url_response(e) {
@@ -209,7 +243,7 @@ function amp_static_scripts() {
                         jQuery(e).parents('tr').find('.create').addClass('disabled2');
                     }
                     jQuery(e).parents('tr').find('.loading').css('visibility', 'hidden');
-                    jQuery('.log-text').append("<p>'" + jQuery(e).data('url') + "' responded with '" + Result.ResponseCode + "'</p>");
+                    amp_static_pages_log("'" + jQuery(e).data('url') + "' responded with '" + Result.ResponseCode + "'.");
                 });
             });
         }
@@ -224,6 +258,7 @@ function amp_static_scripts() {
         function create_static_amp_page(PostID, Parent) {
             if(!jQuery(Parent).hasClass("disabled") && !jQuery(Parent).hasClass("disabled2")) {
                 jQuery(Parent).addClass("disabled");
+                jQuery(Parent).parents('tr').find('.delete').addClass('disabled');
                 jQuery(Parent).parents('tr').find('.loading').css('visibility', 'visible');
                 jQuery(document).ready(function ($) {
                     var data = {
@@ -231,9 +266,17 @@ function amp_static_scripts() {
                         'ID': PostID
                     };
                     jQuery.post(ajaxurl, data, function (response) {
+                        responseArray = JSON.parse(response);
+                        if(responseArray['success'] == "1") {
+                            amp_static_pages_log("AMP file for '" + responseArray['url'] + "' has been created.");
+                            jQuery(Parent).parents('tr').find('.create').text('Update');
+                            jQuery(Parent).parents('tr').find('.delete').removeClass('disabled2');
+                            jQuery(Parent).parents('tr').find('.last-modified').text(responseArray['last_modified']);
+                        } else {
+                            amp_static_pages_log("Filed to create AMP file for " + responseArray['url'] + ".");
+                        }
                         jQuery(Parent).parents('tr').find('.state').css('color', 'green');
                         jQuery(Parent).parents('tr').find('.state').text('true');
-                        jQuery(Parent).parents('tr').find('.create').text('Update');
                         jQuery(Parent).parents('tr').find('.delete').removeClass('disabled');
                         jQuery(Parent).removeClass('disabled');
                         jQuery(Parent).parents('tr').find('.loading').css('visibility', 'hidden');
@@ -249,25 +292,32 @@ function amp_static_scripts() {
             if(!jQuery(Parent).hasClass("disabled")) {
                 jQuery(document).ready(function ($) {
                 jQuery(Parent).parents('tr').find('.create').addClass('disabled');
+                jQuery(Parent).parents('tr').find('.delete').addClass('disabled');
                 jQuery(Parent).parents('tr').find('.loading').css('visibility', 'visible');
                     var data = {
                         'action': 'amp_delete_action',
                         'ID': PostID
                     };
                     jQuery.post(ajaxurl, data, function (response) {
-                        jQuery(Parent).parents('tr').find('.state').css('color', 'red');
-                        jQuery(Parent).parents('tr').find('.state').text('false');
-                        jQuery(Parent).parents('tr').find('.create').text('Create');
+                        responseArray = JSON.parse(response);
+                        if(responseArray['success'] == "1") {
+                            amp_static_pages_log("AMP file for '" + responseArray['url'] + "' has been deleted.");
+                            jQuery(Parent).parents('tr').find('.state').css('color', 'red');
+                            jQuery(Parent).parents('tr').find('.state').text('false');
+                            jQuery(Parent).parents('tr').find('.create').text('Create');;
+                            jQuery(Parent).parents('tr').find('.delete').addClass('disabled2');
+                            jQuery(Parent).parents('tr').find('.last-modified').empty();
+                        } else {
+                            amp_static_pages_log("Filed to delete AMP file for " + responseArray['url'] + ".");
+                        }
                         jQuery(Parent).parents('tr').find('.create').removeClass('disabled');
-                        jQuery(Parent).parents('tr').find('.delete').addClass('disabled');
                         jQuery(Parent).parents('tr').find('.loading').css('visibility', 'hidden');
                     });
                 });
             }
             set_url_response(jQuery(Parent).parents('tr').find('.get_response_code'));
         }
-
-    </script> <?php
+    </script><?php
 }
 
 add_action('wp_ajax_amp_get_response_code','amp_get_response_code');
@@ -293,13 +343,25 @@ function amp_get_response_code() {
 add_action('wp_ajax_amp_create_action', 'amp_create_action');
 
 function amp_create_action() {
-    create_amp_page($_POST['ID']);
+    $PageCreated = create_amp_page($_POST['ID']);
+    $LastModified = date("d F Y H:i:s.",filemtime(get_amp_file_path($_POST['ID'])));
+    $result = [];
+    $result['last_modified'] = $LastModified;
+    $result['url'] = get_the_permalink($_POST['ID']);
+    $result['success'] = $PageCreated;
+    echo json_encode($result);
+    wp_die();
 }
 
 add_action('wp_ajax_amp_delete_action', 'amp_delete_action');
 
 function amp_delete_action() {
-    delete_amp_page($_POST['ID']);
+    $PageDeleted = delete_amp_page($_POST['ID']);
+    $result = [];
+    $result['url'] = get_the_permalink($_POST['ID']);
+    $result['success'] = $PageDeleted;
+    echo json_encode($result);
+    wp_die();
 }
 
 function get_amp_file_path($ID) {
@@ -317,9 +379,7 @@ function get_amp_folder($ID) {
 }
 
 function delete_amp_page($ID) {
-    delete_directory(get_amp_folder($ID));
-    echo "1";
-    wp_die();
+    return delete_directory(get_amp_folder($ID));
 }
 
 function create_amp_page($ID) {
@@ -360,9 +420,10 @@ function create_amp_page($ID) {
         $AMP_Content = get_remote_data(draft_permalink($saved_post) . "amp/");
         mkdir($NewFilePath . "amp/", 0755, true);
         file_put_contents($NewFilePath . "amp/index.html", $AMP_Content);
+        return true;
+    } else {
+        return false;
     }
-    echo "1";
-    wp_die();
 }
 
 function delete_directory($dirname) {
