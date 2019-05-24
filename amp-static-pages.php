@@ -20,7 +20,7 @@ function amp_static_pages_settings_page() {
         AMP Static Pages works by taking a snapshot of your existing AMP web page and saving it as a HTML 
         file on your server. Because AMP Static Pages creates the folder structure necessary to serve 
         up the HTML file without the need of WordPress, it means that you will need to change your permalink 
-        settings so that it is not just parameter dependent.
+        settings (e.g. wwww.example.com/new-page/).
     </p>
     <p>
         Click <a href='<?php echo get_site_url(); ?>/wp-admin/options-permalink.php' title='PermaLink Settings'>here</a> to go to your permalink settings now
